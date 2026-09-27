@@ -159,15 +159,64 @@ function twitchEmbedPage(iframeSrc) {
 </html>`;
 }
 
-// Lecteur live officiel Twitch pour un streamer (mêmes règles que le
-// player.twitch.tv du site : rien n'est téléchargé ni ré-hébergé).
+// Page du lecteur live basée sur l'API JS Twitch.Player. Expose
+// window.__setMuted(bool) : l'app mobile l'appelle via injectJavaScript sur
+// la WebView (jamais en changeant "source.uri") pour piloter le son en
+// temps réel. Le player démarre coupé (muted: true) ; si __setMuted est
+// appelé avant que Twitch.Player.READY ne se déclenche, la valeur est
+// mémorisée et appliquée dès que le lecteur est prêt.
+function twitchLivePlayerPage(channel, parent) {
+  return `<!doctype html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<style>html,body{margin:0;padding:0;background:#000;height:100%;overflow:hidden;}#twitch-embed,#twitch-embed iframe{border:0;width:100%;height:100%;display:block;}</style>
+</head>
+<body>
+<div id="twitch-embed"></div>
+<script src="https://player.twitch.tv/js/embed/v1.js"></script>
+<script>
+  var player = null;
+  var pendingMuted = null;
+
+  function applyMuted(muted) {
+    if (player && typeof player.setMuted === "function") {
+      try { player.setMuted(!!muted); } catch (e) {}
+    } else {
+      pendingMuted = !!muted;
+    }
+  }
+  window.__setMuted = applyMuted;
+
+  player = new Twitch.Player("twitch-embed", {
+    channel: ${JSON.stringify(channel)},
+    parent: [${JSON.stringify(parent)}],
+    autoplay: true,
+    muted: true,
+  });
+  player.addEventListener(Twitch.Player.READY, function () {
+    if (pendingMuted !== null) applyMuted(pendingMuted);
+  });
+</script>
+</body>
+</html>`;
+}
+
+// Lecteur live officiel Twitch pour un streamer, via l'API JS officielle
+// (Twitch.Player) plutôt qu'un simple <iframe src="...">. Contrairement à
+// l'iframe brute, l'API JS expose un objet "player" avec setMuted()/setVolume()
+// : on peut donc couper/activer le son APRÈS le chargement, sans jamais
+// changer l'URL de la WebView — un changement d'URL relancerait le lecteur
+// (et donc une nouvelle pub), exactement le bug qu'on a corrigé ailleurs.
+// Démarre coupé par défaut : quand plusieurs lives tournent en même temps
+// dans l'app, on évite que leurs sons se superposent ; l'utilisateur active
+// le son du live qui l'intéresse via le bouton dédié côté app.
 app.get("/embed/player", (req, res) => {
   const channel = (req.query.channel ?? "").toString().trim().toLowerCase();
   if (!channel) return res.status(400).send("Paramètre 'channel' requis.");
 
   const parent = req.hostname;
-  const src = `https://player.twitch.tv/?channel=${encodeURIComponent(channel)}&parent=${encodeURIComponent(parent)}&muted=false&autoplay=true`;
-  res.set("Content-Type", "text/html").send(twitchEmbedPage(src));
+  res.set("Content-Type", "text/html").send(twitchLivePlayerPage(channel, parent));
 });
 
 // Lecteur officiel Twitch pour un clip déjà créé.
