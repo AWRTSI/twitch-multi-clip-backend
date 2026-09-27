@@ -141,6 +141,45 @@ app.post("/oauth/refresh", async (req, res) => {
   }
 });
 
+// Pages HTML minimales qui embarquent le lecteur officiel Twitch (live ou
+// clip). Twitch exige que l'iframe précise un paramètre "parent" qui
+// correspond au domaine EXACT de la page qui l'affiche : comme l'app mobile
+// charge cette page directement depuis ce backend (via une WebView), le
+// domaine du backend est le bon "parent" à déclarer.
+function twitchEmbedPage(iframeSrc) {
+  return `<!doctype html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<style>html,body{margin:0;padding:0;background:#000;height:100%;overflow:hidden;}iframe{border:0;width:100%;height:100%;display:block;}</style>
+</head>
+<body>
+<iframe src="${iframeSrc}" allowfullscreen allow="autoplay; fullscreen"></iframe>
+</body>
+</html>`;
+}
+
+// Lecteur live officiel Twitch pour un streamer (mêmes règles que le
+// player.twitch.tv du site : rien n'est téléchargé ni ré-hébergé).
+app.get("/embed/player", (req, res) => {
+  const channel = (req.query.channel ?? "").toString().trim().toLowerCase();
+  if (!channel) return res.status(400).send("Paramètre 'channel' requis.");
+
+  const parent = req.hostname;
+  const src = `https://player.twitch.tv/?channel=${encodeURIComponent(channel)}&parent=${encodeURIComponent(parent)}&muted=false&autoplay=true`;
+  res.set("Content-Type", "text/html").send(twitchEmbedPage(src));
+});
+
+// Lecteur officiel Twitch pour un clip déjà créé.
+app.get("/embed/clip", (req, res) => {
+  const clipId = (req.query.id ?? "").toString().trim();
+  if (!clipId) return res.status(400).send("Paramètre 'id' requis.");
+
+  const parent = req.hostname;
+  const src = `https://clips.twitch.tv/embed?clip=${encodeURIComponent(clipId)}&parent=${encodeURIComponent(parent)}&autoplay=false`;
+  res.set("Content-Type", "text/html").send(twitchEmbedPage(src));
+});
+
 app.listen(PORT, () => {
   console.log(`Backend OAuth Twitch Multi-Clip démarré sur le port ${PORT}`);
 });
