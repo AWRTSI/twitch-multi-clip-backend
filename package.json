@@ -1,0 +1,20 @@
+{
+  "name": "twitch-multi-clip-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Petit backend qui garde le Client Secret Twitch et échange/rafraîchit les tokens OAuth pour l'app mobile Twitch Multi-Clip.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express-rate-limit": "^7.4.0"
+  }
+}
