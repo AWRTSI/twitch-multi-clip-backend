@@ -188,11 +188,13 @@ function twitchLivePlayerPage(channel, parent) {
   function applyMuted(muted) {
     if (player && typeof player.setMuted === "function") {
       try { player.setMuted(!!muted); } catch (e) {}
-      // On relance systématiquement la lecture après CHAQUE changement de
-      // son (pas seulement à l'activation) : que ce live vienne d'être
-      // coupé parce qu'un autre prend le relais, ou qu'il vienne d'être
-      // activé, on ne veut jamais le laisser en pause.
-      if (typeof player.play === "function") {
+      // Filet de sécurité minimal : seulement quand CE live est celui que
+      // l'utilisateur vient d'activer explicitement, on relance sa lecture
+      // au cas où elle se serait arrêtée. On NE le fait PAS quand ce live
+      // est simplement coupé (parce qu'un autre prend le relais) : forcer
+      // play() sur un live qu'on vient de couper s'est avéré déclencher une
+      // nouvelle pub chez Twitch, ce qui est pire que le risque de pause.
+      if (!muted && typeof player.play === "function") {
         try { player.play(); } catch (e) {}
       }
     } else {
@@ -201,23 +203,25 @@ function twitchLivePlayerPage(channel, parent) {
   }
   window.__setMuted = applyMuted;
 
+  function applyQuality() {
+    // Force la meilleure qualité disponible ("chunked" = flux source, donc
+    // 1080p60 quand le streamer diffuse à cette qualité) plutôt que l'auto
+    // par défaut, qui peut descendre en résolution selon le réseau.
+    if (player && typeof player.setQuality === "function") {
+      try { player.setQuality("chunked"); } catch (e) {}
+    }
+  }
+
   player = new Twitch.Player("twitch-embed", {
     channel: ${JSON.stringify(channel)},
     parent: [${JSON.stringify(parent)}],
     autoplay: true,
     muted: true,
   });
+  applyQuality();
   player.addEventListener(Twitch.Player.READY, function () {
     if (pendingMuted !== null) applyMuted(pendingMuted);
-  });
-  // Filet de sécurité général : quelle qu'en soit la cause (interruption
-  // audio système le temps qu'un autre live démarre son son, mise en
-  // veille de l'écran, etc.), si CE lecteur se met en pause tout seul, on
-  // relance immédiatement la lecture. Aucun live ne doit rester figé.
-  player.addEventListener(Twitch.Player.PAUSE, function () {
-    if (typeof player.play === "function") {
-      try { player.play(); } catch (e) {}
-    }
+    applyQuality();
   });
 </script>
 </body>
