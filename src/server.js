@@ -188,11 +188,11 @@ function twitchLivePlayerPage(channel, parent) {
   function applyMuted(muted) {
     if (player && typeof player.setMuted === "function") {
       try { player.setMuted(!!muted); } catch (e) {}
-      // Filet de sécurité : si la lecture s'était arrêtée entre-temps (par
-      // ex. une interruption système), on relance explicitement la lecture
-      // au moment où l'utilisateur active le son de CE live, plutôt que de
-      // rester bloqué en pause sans aucun moyen de le relancer.
-      if (!muted && typeof player.play === "function") {
+      // On relance systématiquement la lecture après CHAQUE changement de
+      // son (pas seulement à l'activation) : que ce live vienne d'être
+      // coupé parce qu'un autre prend le relais, ou qu'il vienne d'être
+      // activé, on ne veut jamais le laisser en pause.
+      if (typeof player.play === "function") {
         try { player.play(); } catch (e) {}
       }
     } else {
@@ -209,6 +209,15 @@ function twitchLivePlayerPage(channel, parent) {
   });
   player.addEventListener(Twitch.Player.READY, function () {
     if (pendingMuted !== null) applyMuted(pendingMuted);
+  });
+  // Filet de sécurité général : quelle qu'en soit la cause (interruption
+  // audio système le temps qu'un autre live démarre son son, mise en
+  // veille de l'écran, etc.), si CE lecteur se met en pause tout seul, on
+  // relance immédiatement la lecture. Aucun live ne doit rester figé.
+  player.addEventListener(Twitch.Player.PAUSE, function () {
+    if (typeof player.play === "function") {
+      try { player.play(); } catch (e) {}
+    }
   });
 </script>
 </body>
