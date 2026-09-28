@@ -185,6 +185,14 @@ function twitchLivePlayerPage(channel, parent) {
   function applyMuted(muted) {
     if (player && typeof player.setMuted === "function") {
       try { player.setMuted(!!muted); } catch (e) {}
+      // Filet de sécurité : si la lecture s'est arrêtée entre-temps (par ex.
+      // une coupure audio système le temps qu'un autre live démarre son
+      // propre son), on relance explicitement la lecture au moment où
+      // l'utilisateur active le son de CE live, plutôt que de rester bloqué
+      // en pause sans aucun moyen de le relancer.
+      if (!muted && typeof player.play === "function") {
+        try { player.play(); } catch (e) {}
+      }
     } else {
       pendingMuted = !!muted;
     }
