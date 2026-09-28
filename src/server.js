@@ -184,6 +184,7 @@ function twitchLivePlayerPage(channel, parent) {
 <script>
   var player = null;
   var pendingMuted = null;
+  var resumeTimer = null;
 
   function applyMuted(muted) {
     if (player && typeof player.setMuted === "function") {
@@ -213,12 +214,9 @@ function twitchLivePlayerPage(channel, parent) {
   }
 
   // Prévient l'app mobile (via postMessage, lu côté RN dans onMessage) de
-  // l'état pause/lecture réel du lecteur. iOS force en pause la WebView qui
-  // perd le focus audio dès qu'une autre live réclame le son — un
-  // comportement système qu'on ne peut ni empêcher ni détecter en dehors
-  // d'ici. Plutôt que de forcer un play() (qui a déclenché une nouvelle pub
-  // à chaque tentative), l'app mobile se contente de masquer visuellement
-  // ce live avec une vignette fixe tant qu'il reste dans cet état.
+  // l'état pause/lecture réel du lecteur, pour qu'elle puisse masquer
+  // brièvement ce live avec une vignette pendant la coupure — voir plus bas
+  // pourquoi on relance quand même automatiquement la lecture.
   function notifyPlaybackState(isPaused) {
     if (
       typeof window !== "undefined" &&
@@ -246,9 +244,31 @@ function twitchLivePlayerPage(channel, parent) {
   });
   player.addEventListener(Twitch.Player.PAUSE, function () {
     notifyPlaybackState(true);
+    // iOS force en pause la WebView qui perd le focus audio dès qu'une
+    // autre réclame le son — un comportement système qu'on ne peut pas
+    // empêcher (voir la doc Apple sur les sessions audio concurrentes). Le
+    // but de l'app étant que TOUS les lives sélectionnés restent en direct
+    // en permanence (le son mis à part), on relance nous-mêmes la lecture
+    // ici plutôt que de la laisser figée en attendant une action de
+    // l'utilisateur. Un léger délai laisse la coupure système se terminer
+    // avant de retenter. Le compromis assumé : cette relance peut parfois
+    // déclencher une nouvelle pub sur CE live précis, le temps d'un
+    // instant — la vignette (voir notifyPlaybackState) masque cet instant
+    // pendant qu'il se produit.
+    if (resumeTimer) clearTimeout(resumeTimer);
+    resumeTimer = setTimeout(function () {
+      resumeTimer = null;
+      if (player && typeof player.play === "function") {
+        try { player.play(); } catch (e) {}
+      }
+    }, 400);
   });
   player.addEventListener(Twitch.Player.PLAYING, function () {
     notifyPlaybackState(false);
+    if (resumeTimer) {
+      clearTimeout(resumeTimer);
+      resumeTimer = null;
+    }
   });
 </script>
 </body>
