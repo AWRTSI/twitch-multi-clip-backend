@@ -212,6 +212,27 @@ function twitchLivePlayerPage(channel, parent) {
     }
   }
 
+  // Prévient l'app mobile (via postMessage, lu côté RN dans onMessage) de
+  // l'état pause/lecture réel du lecteur. iOS force en pause la WebView qui
+  // perd le focus audio dès qu'une autre live réclame le son — un
+  // comportement système qu'on ne peut ni empêcher ni détecter en dehors
+  // d'ici. Plutôt que de forcer un play() (qui a déclenché une nouvelle pub
+  // à chaque tentative), l'app mobile se contente de masquer visuellement
+  // ce live avec une vignette fixe tant qu'il reste dans cet état.
+  function notifyPlaybackState(isPaused) {
+    if (
+      typeof window !== "undefined" &&
+      window.ReactNativeWebView &&
+      typeof window.ReactNativeWebView.postMessage === "function"
+    ) {
+      try {
+        window.ReactNativeWebView.postMessage(
+          JSON.stringify({ type: "playbackState", paused: !!isPaused })
+        );
+      } catch (e) {}
+    }
+  }
+
   player = new Twitch.Player("twitch-embed", {
     channel: ${JSON.stringify(channel)},
     parent: [${JSON.stringify(parent)}],
@@ -222,6 +243,12 @@ function twitchLivePlayerPage(channel, parent) {
   player.addEventListener(Twitch.Player.READY, function () {
     if (pendingMuted !== null) applyMuted(pendingMuted);
     applyQuality();
+  });
+  player.addEventListener(Twitch.Player.PAUSE, function () {
+    notifyPlaybackState(true);
+  });
+  player.addEventListener(Twitch.Player.PLAYING, function () {
+    notifyPlaybackState(false);
   });
 </script>
 </body>
