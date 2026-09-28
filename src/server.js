@@ -160,11 +160,13 @@ function twitchEmbedPage(iframeSrc) {
 }
 
 // Page du lecteur live basée sur l'API JS Twitch.Player. Expose
-// window.__setMuted(bool) : l'app mobile l'appelle via injectJavaScript sur
-// la WebView (jamais en changeant "source.uri") pour piloter le son en
-// temps réel. Le player démarre coupé (muted: true) ; si __setMuted est
-// appelé avant que Twitch.Player.READY ne se déclenche, la valeur est
-// mémorisée et appliquée dès que le lecteur est prêt.
+// window.__setMuted(bool) et window.__setVolume(0..1) : l'app mobile les
+// appelle via injectJavaScript sur la WebView (jamais en changeant
+// "source.uri") pour piloter le son et le volume en temps réel,
+// indépendamment pour chaque live. Le player démarre coupé (muted: true) ;
+// si __setMuted/__setVolume sont appelés avant que Twitch.Player.READY ne
+// se déclenche, les valeurs sont mémorisées et appliquées dès que le
+// lecteur est prêt.
 function twitchLivePlayerPage(channel, parent) {
   return `<!doctype html>
 <html>
@@ -178,6 +180,7 @@ function twitchLivePlayerPage(channel, parent) {
 <script>
   var player = null;
   var pendingMuted = null;
+  var pendingVolume = null;
 
   function applyMuted(muted) {
     if (player && typeof player.setMuted === "function") {
@@ -186,7 +189,15 @@ function twitchLivePlayerPage(channel, parent) {
       pendingMuted = !!muted;
     }
   }
+  function applyVolume(volume) {
+    if (player && typeof player.setVolume === "function") {
+      try { player.setVolume(volume); } catch (e) {}
+    } else {
+      pendingVolume = volume;
+    }
+  }
   window.__setMuted = applyMuted;
+  window.__setVolume = applyVolume;
 
   player = new Twitch.Player("twitch-embed", {
     channel: ${JSON.stringify(channel)},
@@ -196,6 +207,7 @@ function twitchLivePlayerPage(channel, parent) {
   });
   player.addEventListener(Twitch.Player.READY, function () {
     if (pendingMuted !== null) applyMuted(pendingMuted);
+    if (pendingVolume !== null) applyVolume(pendingVolume);
   });
 </script>
 </body>
@@ -205,12 +217,13 @@ function twitchLivePlayerPage(channel, parent) {
 // Lecteur live officiel Twitch pour un streamer, via l'API JS officielle
 // (Twitch.Player) plutôt qu'un simple <iframe src="...">. Contrairement à
 // l'iframe brute, l'API JS expose un objet "player" avec setMuted()/setVolume()
-// : on peut donc couper/activer le son APRÈS le chargement, sans jamais
-// changer l'URL de la WebView — un changement d'URL relancerait le lecteur
-// (et donc une nouvelle pub), exactement le bug qu'on a corrigé ailleurs.
-// Démarre coupé par défaut : quand plusieurs lives tournent en même temps
-// dans l'app, on évite que leurs sons se superposent ; l'utilisateur active
-// le son du live qui l'intéresse via le bouton dédié côté app.
+// : on peut donc couper/activer le son et régler le volume APRÈS le
+// chargement, sans jamais changer l'URL de la WebView — un changement d'URL
+// relancerait le lecteur (et donc une nouvelle pub), exactement le bug
+// qu'on a corrigé ailleurs. Démarre coupé par défaut (pour éviter un mur de
+// son au chargement quand plusieurs lives démarrent en même temps), mais
+// chaque live est ensuite indépendant : l'utilisateur peut en activer
+// plusieurs à la fois et régler le volume de chacun séparément côté app.
 app.get("/embed/player", (req, res) => {
   const channel = (req.query.channel ?? "").toString().trim().toLowerCase();
   if (!channel) return res.status(400).send("Paramètre 'channel' requis.");
